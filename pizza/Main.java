@@ -1,3 +1,4 @@
+import java.util.concurrent.atomic.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,16 +17,22 @@ public class Main{
   private static int H;
   private static int LIM;
   private static boolean concurrent = false;
+  private static boolean con_exp = false;
   private static char[][] pizza;
   private static boolean log = false;
   private static boolean saveResult = false;
+  private static String stats = "";
+  private static int THREADS;
+  private static int GRAN;
 
-  private static final ExecutorService pool = Executors.newFixedThreadPool(8);
+  private static ExecutorService pool;
 
   public static void main(String[] args) {
     log |= option(args, "-l");
     concurrent |= option(args, "-c");
     saveResult |= option(args, "-s");
+    con_exp |= option(args, "-conexp");
+
 
     Scanner in = new Scanner(System.in);
 
@@ -33,16 +40,12 @@ public class Main{
     C = in.nextInt();
     L = in.nextInt();
     H = in.nextInt();
+    LIM = Math.max(Math.min(H, checkValue(args, "-lim", H)), 2*L);
+    THREADS = checkValue(args, "-c", 8);
+    GRAN = checkValue(args, "-gran", 1);
+    pool = Executors.newFixedThreadPool(8);
+    stats+= "Concurrency: " + concurrent  + " Threads: " + THREADS+ " Limiting size: " + LIM + " Granularity: " + GRAN +"\n";
 
-    if (option(args, "-lim")) {
-      for (int i = 0; i < args.length; i++)
-        if (args[i].equals("-lim")) {
-          LIM = Integer.valueOf(args[i+1]);
-          break;
-        }
-    } else {
-      LIM = H;
-    }
     pizza = new char[R][C];
     readPizza(in);
 
@@ -61,7 +64,7 @@ public class Main{
       print(slicedPizzaByOrderedPick);
     }
 
-    Set<Slice> expansionSolution = searchSolutionSpaceByExpansion(orderedPickSolution);
+    Set<Slice> expansionSolution = concurrent && con_exp ? searchSolutionSpaceByConcurrentExpansion(orderedPickSolution) : searchSolutionSpaceByExpansion(orderedPickSolution);
 
     if (saveResult) {
       saveResultToFile(expansionSolution);
@@ -74,7 +77,7 @@ public class Main{
       print(slicedPizzaByExpansion);
     }
 
-    System.out.println("Solution score: " +  score(expansionSolution) + " pizza size: " + (C*R));
+    System.out.println("Solution score: " +  score(expansionSolution) + " pizza size: " + (C*R) + " stats: \n" + stats);
   }
 
   private static void saveResultToFile(Set<Slice> expansionSolution) {
@@ -89,26 +92,86 @@ public class Main{
   }
 
   private static Set<Slice> createSolutionByOrderedPick() {
-    Set<Slice> initSlices = concurrent ? computeLimitedSlicesConcurrently(pizza, L, H, Math.max(Math.min(H, LIM), 2*L)) : computeLimitedSlices(pizza, L, H, Math.max(Math.min(H, LIM), 2*L));
-    System.out.println("Finished");
-    PriorityQueue<Slice> priorityQueue = new PriorityQueue<>(R * C, Comparator.comparingInt(Slice::size));
+    Set<Slice> initSlices = computeInitialSlices(pizza, L, H, LIM);
+
+    long starttime = System.currentTimeMillis();
+    PriorityQueue<Slice> priorityQueue = new PriorityQueue<>(R * C, sizeAndDistanceComparator());
     priorityQueue.addAll(initSlices);
 
     Set<Slice> solution = new HashSet<>(Arrays.asList(priorityQueue.poll()));
     while(!priorityQueue.isEmpty()) {
       Slice slice = priorityQueue.poll();
-      boolean intersects = solution.stream().anyMatch(s -> intersect(slice, s));
-      if (!intersects)
+      if (!intersect(slice, solution))
         solution.add(slice);
     }
-
-    if (log)
-      initSlices.forEach(System.out::println);
-
+    long endtime = System.currentTimeMillis();
+    stats += "Ordered Pick Solution: " + (endtime - starttime) + " millis. Score: " + score(solution) + "\n";
     return solution;
   }
 
+  public static Comparator<Slice> sizeAndDistanceComparator() {
+    return (s1, s2) -> s1.size() != s2.size() ? s1.size() - s2.size() : (Math.max(s1.upperLeft.x, s1.upperLeft.y) - Math.max(s2.upperLeft.x, s2.upperLeft.y));
+  }
+
+  public static Comparator<Slice> sizeComparator() {
+    return (s1, s2) -> s1.size() - s2.size();
+  }
+
+  private static Set<Slice> computeInitialSlices(char[][] pizza, int L, int H, int LIM) {
+    long starttime = System.currentTimeMillis();
+    Set<Slice> initSlices = concurrent ? computeLimitedSlicesConcurrently(pizza, L, H, LIM) : computeLimitedSlices(pizza, L, H, LIM);
+    long endtime = System.currentTimeMillis();
+    stats += "Initial Set: " + (endtime - starttime) + " millis.\n";
+    return initSlices;
+  }
+
   private static Set<Slice> searchSolutionSpaceByExpansion(Set<Slice> initSlices) {
+    Set<Slice> nonExpandable = new HashSet<>();
+    long starttime = System.currentTimeMillis();
+    while (!initSlices.isEmpty()) {
+      Slice slice = chooseSliceForExpansion(initSlices);
+      initSlices.remove(slice);
+      Slice expanded = expand(slice, nonExpandable, initSlices);
+
+      if (expanded.equals(slice) || expanded.size() > H) {
+        nonExpandable.add(slice);
+        continue;
+      }
+
+      initSlices.add(expanded);
+    }
+    long endtime = System.currentTimeMillis();
+    stats += "Single Threaded Expansion Solution: " + (endtime - starttime) + " millis. Score: " + score(nonExpandable) +"\n";
+    return nonExpandable;
+  }
+
+  private static Set<Slice> searchSolutionSpaceByConcurrentExpansion(Set<Slice> initSlices) {
+    ExecutorService pool = Executors.newFixedThreadPool(THREADS);
+    AtomicInteger score = new AtomicInteger(0);
+    Solution solution = new Solution(null);
+    long starttime = System.currentTimeMillis();
+    pool.execute(() -> searchSolutionSpaceByExpansion(new HashSet<>(initSlices), score, solution));
+    int i = 0;
+    for (Slice slice : initSlices) {
+      if (i++ % GRAN == 0) {
+        Set<Slice> copy = new HashSet<>(initSlices);
+        copy.remove(slice);
+        pool.execute(() -> searchSolutionSpaceByExpansion(copy, score, solution));
+      }
+    }
+
+    pool.shutdown();
+    try {
+      pool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+    } catch (InterruptedException e) {
+    }
+
+    long endtime = System.currentTimeMillis();
+    stats += "Multi Threaded Expansion Solution: " + (endtime - starttime) + " millis. Score: " + score.get() +"\n";
+    return solution.solution;
+  }
+
+  private static void searchSolutionSpaceByExpansion(Set<Slice> initSlices, final AtomicInteger score, final Solution solution) {
     Set<Slice> nonExpandable = new HashSet<>();
     while (!initSlices.isEmpty()) {
       Slice slice = chooseSliceForExpansion(initSlices);
@@ -123,7 +186,14 @@ public class Main{
       initSlices.add(expanded);
     }
 
-    return nonExpandable;
+    synchronized(score) {
+      int curr = score(nonExpandable);
+      if (score.get() < curr) {
+        score.set(curr);
+        solution.solution = nonExpandable;
+      }
+    }
+
   }
 
   private static Slice chooseSliceForExpansion(Set<Slice> slices) {
@@ -162,8 +232,8 @@ public class Main{
 
   private static boolean intersect(Slice slice, Set... sets) {
     for (Set<Slice> set : sets)
-      if (set.stream().anyMatch(s -> intersect(s, slice)))
-        return true;
+        if (set.parallelStream().anyMatch(s -> intersect(s, slice)))
+          return true;
     return false;
   }
 
@@ -313,6 +383,16 @@ public class Main{
     return Arrays.stream(args).anyMatch(a -> a.equals(op));
   }
 
+  private static int checkValue(String[] args, String arg, int defaultVal) {
+    if (option(args, arg)) {
+      for (int i = 0; i < args.length; i++)
+        if (args[i].equals(arg))
+          return (i + 1) < args.length && !args[i + 1].startsWith("-") ? Integer.valueOf(args[i+1]) : defaultVal;
+    }
+
+    return defaultVal;
+  }
+
   private static void print(String[][] pizza) {
     for (String[] row : pizza) {
       for (String ing : row)
@@ -332,6 +412,14 @@ public class Main{
   private static void log(String str) {
     if (log)
       System.out.println(str);
+  }
+
+  private static class Solution {
+    Set<Slice> solution;
+
+    Solution(Set<Slice> solution) {
+      this.solution = solution;
+    }
   }
 
   private static class Slice {
@@ -371,7 +459,7 @@ public class Main{
     }
 
     public String toSaveString() {
-      return upperLeft.x + " " + upperLeft.y + " " + lowerRight.x + " " + lowerRight.y;
+      return upperLeft.y + " " + upperLeft.x + " " + lowerRight.y + " " + lowerRight.x;
     }
 
     Slice expandLeft() {
