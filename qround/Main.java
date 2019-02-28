@@ -70,9 +70,9 @@ public class Main {
             in.nextLine();
         }
 
-        horizontal.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
+        //horizontal.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
 
-        vertical.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
+        //vertical.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
 
         List<Slide> slideSolution = greedy(horizontal, vertical);
         List<String> results = prepareResultToPrint(slideSolution);
@@ -80,6 +80,7 @@ public class Main {
         if (log) {
             log(String.format(TAG, "Result"));
             printResult(results);
+            System.out.println("Score: " + score(slideSolution));
         }
 
         if (saveResult) {
@@ -146,15 +147,20 @@ public class Main {
         List<Slide> solution = new ArrayList<>(horizontal.size() + vertical.size());
         solution.add(firstSlide);
 
-        List<Map.Entry<Set<String>, List<Integer>>> verList = new ArrayList<>(vertical.entrySet());
-        while (!horizontal.isEmpty() || vertical.size() <= 2){
+
+        while (!horizontal.isEmpty() || vertical.size() >= 2){
+            /*System.out.println("Horizontals: ");
+            horizontal.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
+            System.out.println("Verticals: ");
+            vertical.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));*/
+            System.out.println("Horizontals: " + horizontal.size() + " vertical: " + vertical.size());
             int horMaxScore = -1;
             Slide hor = null;
             int verMaxScore = 0;
             Slide ver = null;
             Slide last = solution.get(solution.size() - 1);
-            Set<String> verTags1 = null;
-            Set<String> verTags2 = null;
+            Set<String> foundVerTags1 = null;
+            Set<String> foundVerTags2 = null;
 
             List<Map.Entry<Set<String>, List<Integer>>> horList = new ArrayList<>(horizontal.entrySet());
             for (int i = 0; i < horList.size(); i += GRAN) {
@@ -167,23 +173,17 @@ public class Main {
                 }
             }
 
-            System.out.println("/////////////////////Vertical////////////////");
-            vertical.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
-
-            int x = 0;
-            int y = 0;
-
             int bestVerticalScore = -1;
+            List<Map.Entry<Set<String>, List<Integer>>> verList = new ArrayList<>(vertical.entrySet());
            for (int i = 0; i < verList.size() - 1; i+=GRAN) {
                int id1 = verList.get(i).getValue().get(0);
                int id2 = verList.get(i + 1).getValue().get(0);
-               verTags1 = verList.get(i).getKey();
-               verTags2 = verList.get(i + 1).getKey();
-                x = i;
-              y = i + 1;
+               Set<String> verTags1 = verList.get(i).getKey();
+               Set<String> verTags2 = verList.get(i + 1).getKey();
                Slide next = new Slide(id1, id2, verTags1, verTags2);
-               System.out.println(id1 + " " + id2 + " " + last.scoreTransition(next));
                if(last.scoreTransition(next) > bestVerticalScore) {
+                   foundVerTags1 = verTags1;
+                   foundVerTags2 = verTags2;
                    ver = next;
                    bestVerticalScore = last.scoreTransition(next);
                }
@@ -202,34 +202,27 @@ public class Main {
                 }
 
                 solution.add(hor);
-            } else if (verTags1 != null && verTags2 != null) {
+            } else if (foundVerTags1 != null && foundVerTags2 != null) {
 
-                List<Integer> photos2 = verList.get(y).getValue();
-                List<Integer> photos1 = verList.get(x).getValue();
-                System.out.println("/////////////////////asd////////////////");
-                verTags1.forEach(System.out::println);
-                photos1.forEach(System.out::println);
-                vertical.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
-
-
-                if (photos2.size() == 1) {
-                    verList.remove(y);
-                } else {
-                    photos2.remove(0);
-                }
+                List<Integer> photos1 = vertical.get(foundVerTags1);
+                List<Integer> photos2 = vertical.get(foundVerTags2);
 
                 if (photos1.size() == 1) {
-                    verList.remove(x);
+                    vertical.remove(foundVerTags1);
                 } else {
                     photos1.remove(0);
                 }
 
+                if (photos2.size() == 1) {
+                    vertical.remove(foundVerTags2);
+                } else {
+                    photos2.remove(0);
+                }
 
                 solution.add(ver);
             }
         }
 
-        solution.forEach(s ->System.out.println("Slide: horizontal: " + s.horizontal + " tags: " + s.tags.stream().collect(Collectors.joining(","))));
         return solution;
     }
 
