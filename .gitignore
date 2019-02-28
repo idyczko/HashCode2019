@@ -1,0 +1,14 @@
+*.class
+*.classpath
+*.project
+*.iml
+
+# Package Files #
+*.jar
+*.war
+*.ear
+
+target/
+eclipse-target/
+**/src/generated/
+**/classes/
