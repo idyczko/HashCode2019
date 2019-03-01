@@ -78,9 +78,9 @@ public class Main {
         List<String> results = prepareResultToPrint(slideSolution);
 
         if (log) {
-            log(String.format(TAG, "Result"));
+            //log(String.format(TAG, "Result"));
             printResult(results);
-            System.out.println("Score: " + score(slideSolution));
+            //System.out.println("Score: " + score(slideSolution));
         }
 
         if (saveResult) {
