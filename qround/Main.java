@@ -27,12 +27,11 @@ public class Main {
     private static int size;
 
     public static void main(String[] args) {
-        args = new String[1];
-        args[0] = "-l";
         log |= option(args, "-l");
         concurrent |= option(args, "-c");
         saveResult |= option(args, "-s");
         GRAN = checkValue(args, "-gran", 1);
+        System.out.println("GRAN: " + GRAN);
 
         Map<Set<String>, List<Integer>> horizontal = new HashMap<>();
         Map<Set<String>, List<Integer>> vertical = new HashMap<>();
@@ -118,7 +117,7 @@ public class Main {
     public static List<Slide> greedy(Map<Set<String>, List<Integer>> horizontal, Map<Set<String>, List<Integer>> vertical) {
 
         Slide firstSlide = null;
-
+        long starttime = System.currentTimeMillis();
         Optional<Map.Entry<Set<String>, List<Integer>>> first = horizontal.entrySet().stream().findAny();
         if (first.isPresent()) {
             Integer id = first.get().getValue().remove(0);
@@ -147,27 +146,28 @@ public class Main {
         List<Slide> solution = new ArrayList<>(horizontal.size() + vertical.size());
         solution.add(firstSlide);
 
-
-        while (!horizontal.isEmpty() || vertical.size() >= 2){
+        List<Map.Entry<Set<String>, List<Integer>>> horList = new ArrayList<>(horizontal.entrySet());
+        while (!horList.isEmpty() || vertical.size() >= 2){
             /*System.out.println("Horizontals: ");
             horizontal.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
             System.out.println("Verticals: ");
             vertical.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));*/
-            System.out.println("Horizontals: " + horizontal.size() + " vertical: " + vertical.size());
+            //System.out.println("Horizontals: " + horList.size() + " vertical: " + vertical.size());
             int horMaxScore = -1;
             Slide hor = null;
             int verMaxScore = 0;
+            int horMaxScoreIndex = -1;
             Slide ver = null;
             Slide last = solution.get(solution.size() - 1);
             Set<String> foundVerTags1 = null;
             Set<String> foundVerTags2 = null;
 
-            List<Map.Entry<Set<String>, List<Integer>>> horList = new ArrayList<>(horizontal.entrySet());
             for (int i = 0; i < horList.size(); i += GRAN) {
                 Integer index = horList.get(i).getValue().get(0);
                 Slide next = new Slide(index, horList.get(i).getKey());
                 int score = last.scoreTransition(next);
                 if (score > horMaxScore) {
+                    horMaxScoreIndex = i;
                     horMaxScore = score;
                     hor = next;
                 }
@@ -175,28 +175,38 @@ public class Main {
 
             int bestVerticalScore = -1;
             List<Map.Entry<Set<String>, List<Integer>>> verList = new ArrayList<>(vertical.entrySet());
-           for (int i = 0; i < verList.size() - 1; i+=GRAN) {
-               int id1 = verList.get(i).getValue().get(0);
-               int id2 = verList.get(i + 1).getValue().get(0);
-               Set<String> verTags1 = verList.get(i).getKey();
-               Set<String> verTags2 = verList.get(i + 1).getKey();
-               Slide next = new Slide(id1, id2, verTags1, verTags2);
-               if(last.scoreTransition(next) > bestVerticalScore) {
-                   foundVerTags1 = verTags1;
-                   foundVerTags2 = verTags2;
-                   ver = next;
-                   bestVerticalScore = last.scoreTransition(next);
-               }
-           }
+            if (verList.size() >= 2) {
+             for (int i = 0; i < verList.size() - 1; i+=GRAN) {
+                int id1 = verList.get(i).getValue().get(0);
+                Set<String> verTags1 = verList.get(i).getKey();
+                for(int j = 0; j < verList.size(); j+=GRAN) {
+                  if (i == j)
+                    if (j == verList.size() - 1)
+                      break;
+                    else
+                      j++;
+
+                  int id2 = verList.get(j).getValue().get(0);
+                  Set<String> verTags2 = verList.get(j).getKey();
+                  Slide next = new Slide(id1, id2, verTags1, verTags2);
+                  if(last.scoreTransition(next) > bestVerticalScore) {
+                    foundVerTags1 = verTags1;
+                    foundVerTags2 = verTags2;
+                    ver = next;
+                    bestVerticalScore = last.scoreTransition(next);
+                  }
+                }
+              }
+            }
 
             int verScore = ver == null ? -1 :last.scoreTransition(ver);
             int horScore = hor == null ? -1 :last.scoreTransition(hor);
 
             if (horScore > verScore && (hor != null)) {
-                List<Integer> photos = horizontal.get(hor.tags);
+                List<Integer> photos = horList.get(horMaxScoreIndex).getValue();
 
                 if (photos.size() == 1) {
-                    horizontal.remove(hor.tags);
+                    horList.remove(horMaxScoreIndex);
                 } else {
                     photos.remove(0);
                 }
@@ -222,7 +232,8 @@ public class Main {
                 solution.add(ver);
             }
         }
-
+        long endtime = System.currentTimeMillis();
+        System.out.println("The algorithm took: " + (endtime-starttime) + " millis.");
         return solution;
     }
 
