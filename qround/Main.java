@@ -149,21 +149,22 @@ public class Main {
             int verIndex1 = -1;
             int verIndex2 = -1;
 
-            ExecutorService pool = Executors.newFixedThreadPool(THREADS);
+            ExecutorService hPool = Executors.newFixedThreadPool(THREADS);
             final int chunkSize = horList.size()/THREADS + 1;
             log("Chunk size: " + chunkSize);
             for (int i = 0; i < THREADS; i++) {
               final int I = i;
-              pool.execute(() -> horizontalUnitOfWork(horList, horMaxScore, horMaxScoreIndex, hor, last, I*chunkSize, (I + 1)*chunkSize));
+              hPool.execute(() -> horizontalUnitOfWork(horList, horMaxScore, horMaxScoreIndex, hor, last, I*chunkSize, (I + 1)*chunkSize));
             }
-            pool.shutdown();
+            hPool.shutdown();
             try {
-              pool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+              hPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
             } catch (InterruptedException e) {
             }
 
             if (verList.size() >= 2) {
-             for (int i = 0; i < verList.size() - 1; i+=GRAN_V1) {
+
+              for (int i = 0; i < verList.size() - 1; i+=GRAN_V1) {
                 int id1 = verList.get(i).getValue().get(0);
                 Set<String> verTags1 = verList.get(i).getKey();
                 for(int j = 0; j < verList.size(); j+=GRAN_V2) {
