@@ -30,12 +30,14 @@ public class Main {
     private static int GRAN_V2;
     private static String stats = "";
     private static boolean s = false;
+    private static boolean r = false;
     private static int size;
 
     public static void main(String[] args) {
         log |= option(args, "-l");
         concurrent |= option(args, "-c");
         s |= option(args, "-s");
+        r |= option(args, "-r");
         GRAN_H = checkValue(args, "-gran_h", 1);
         GRAN_V1 = checkValue(args, "-gran_v1", 1);
         GRAN_V2 = checkValue(args, "-gran_v2", 1);
@@ -43,6 +45,7 @@ public class Main {
         stats+= "Horizontal gran: " + GRAN_H + "\n";
         stats+= "Vertical 1st level gran: " + GRAN_V1 + "\n";
         stats+= "Vertical 2nd level gran: " + GRAN_V2 + "\n";
+        stats+= "Concurrency on " + THREADS + " threads.\n";
 
         Map<Set<String>, List<Integer>> horizontal = new HashMap<>();
         Map<Set<String>, List<Integer>> vertical = new HashMap<>();
@@ -61,7 +64,8 @@ public class Main {
         if(s)
           System.out.println(stats);
 
-        printResult(prepareResultToPrint(slideSolution));
+        if(r)
+          printResult(prepareResultToPrint(slideSolution));
     }
 
     private static void read(Map<Set<String>, List<Integer>> horizontal, Map<Set<String>, List<Integer>> vertical) {
@@ -144,17 +148,17 @@ public class Main {
             AtomicInteger horMaxScore = new AtomicInteger(-1);
             AtomicInteger horMaxScoreIndex = new AtomicInteger(-1);
 
-            Slide ver = null;
-            int verMaxScore = -1;
-            int verIndex1 = -1;
-            int verIndex2 = -1;
+            SlideHolder ver = new SlideHolder();
+            AtomicInteger verMaxScore = new AtomicInteger(-1);
+            AtomicInteger verIndex1 = new AtomicInteger(-1);
+            AtomicInteger verIndex2 = new AtomicInteger(-1);
 
             ExecutorService hPool = Executors.newFixedThreadPool(THREADS);
-            final int chunkSize = horList.size()/THREADS + 1;
-            log("Chunk size: " + chunkSize);
+            final int hChunkSize = horList.size()/THREADS + 1;
+            log("Horizontal Chunk size: " + hChunkSize);
             for (int i = 0; i < THREADS; i++) {
               final int I = i;
-              hPool.execute(() -> horizontalUnitOfWork(horList, horMaxScore, horMaxScoreIndex, hor, last, I*chunkSize, (I + 1)*chunkSize));
+              hPool.execute(() -> horizontalUnitOfWork(horList, horMaxScore, horMaxScoreIndex, hor, last, I*hChunkSize, (I + 1)*hChunkSize));
             }
             hPool.shutdown();
             try {
@@ -163,34 +167,22 @@ public class Main {
             }
 
             if (verList.size() >= 2) {
-
-              for (int i = 0; i < verList.size() - 1; i+=GRAN_V1) {
-                int id1 = verList.get(i).getValue().get(0);
-                Set<String> verTags1 = verList.get(i).getKey();
-                for(int j = 0; j < verList.size(); j+=GRAN_V2) {
-                  if (i == j)
-                    if (j == verList.size() - 1)
-                      break;
-                    else
-                      j++;
-
-                  int id2 = verList.get(j).getValue().get(0);
-                  Set<String> verTags2 = verList.get(j).getKey();
-                  Slide next = new Slide(id1, id2, verTags1, verTags2);
-                  int score = last.scoreTransition(next);
-
-                  if(score > verMaxScore) {
-                    verIndex1 = i;
-                    verIndex2 = j;
-                    verMaxScore = score;
-                    ver = next;
-                  }
-                }
+              ExecutorService vPool = Executors.newFixedThreadPool(THREADS);
+              final int vChunkSize = verList.size()/THREADS + 1;
+              log("Vertical Chunk size: " + vChunkSize);
+              for (int i = 0; i < THREADS; i++) {
+                final int I = i;
+                vPool.execute(() -> verticalUnitOfWork(verList, verMaxScore, verIndex1, verIndex2, ver, last, I*vChunkSize, (I + 1)*vChunkSize));
+              }
+              vPool.shutdown();
+              try {
+                vPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+              } catch (InterruptedException e) {
               }
             }
 
-            log("Hor score: " + horMaxScore.get() + " ver score: " + verMaxScore);
-            if (horMaxScore.get() > verMaxScore) {
+            log("Hor score: " + horMaxScore.get() + " ver score: " + verMaxScore.get());
+            if (horMaxScore.get() > verMaxScore.get()) {
                 List<Integer> photos = horList.get(horMaxScoreIndex.get()).getValue();
 
                 if (photos.size() == 1) {
@@ -201,8 +193,8 @@ public class Main {
 
                 solution.add(hor.slide);
             } else {
-                int biggerIndex = verIndex1 > verIndex2 ? verIndex1 : verIndex2;
-                int smallerIndex = verIndex1 > verIndex2 ? verIndex2 : verIndex1;
+                int biggerIndex = verIndex1.get() > verIndex2.get() ? verIndex1.get() : verIndex2.get();
+                int smallerIndex = verIndex1.get() > verIndex2.get() ? verIndex2.get() : verIndex1.get();
 
                 List<Integer> biggerPhotos = verList.get(biggerIndex).getValue();
                 List<Integer> smallerPhotos = verList.get(smallerIndex).getValue();
@@ -219,13 +211,44 @@ public class Main {
                     smallerPhotos.remove(0);
                 }
 
-                solution.add(ver);
+                solution.add(ver.slide);
             }
         }
         long endtime = System.currentTimeMillis();
         stats += "The algorithm took: " + (endtime-starttime) + " millis.\n";
         return solution;
     }
+
+    private static void verticalUnitOfWork(List<Map.Entry<Set<String>, List<Integer>>> verList,
+      AtomicInteger score, AtomicInteger index1, AtomicInteger index2, SlideHolder slideHolder, Slide last, int start, int end) {
+        for (int i = start; i < end && i < verList.size(); i += GRAN_V1) {
+          int id1 = verList.get(i).getValue().get(0);
+          Set<String> verTags1 = verList.get(i).getKey();
+          for(int j = 0; j < verList.size(); j+=GRAN_V2) {
+            if (i == j)
+              if (j == verList.size() - 1)
+                break;
+              else
+                j++;
+
+            int id2 = verList.get(j).getValue().get(0);
+            Set<String> verTags2 = verList.get(j).getKey();
+            Slide next = new Slide(id1, id2, verTags1, verTags2);
+            int tempScore = last.scoreTransition(next);
+
+            if(tempScore > score.get()) {
+              synchronized(score) {
+                if (tempScore > score.get()) {
+                  index1.set(i);
+                  index2.set(j);
+                  score.set(tempScore);
+                  slideHolder.slide = next;
+                }
+              }
+            }
+          }
+        }
+      }
 
     private static void horizontalUnitOfWork(List<Map.Entry<Set<String>, List<Integer>>> horList, AtomicInteger score, AtomicInteger index, SlideHolder slideHolder, Slide last, int start, int end) {
       for (int i = start; (i < end) && (i < horList.size()); i += GRAN_H) {
