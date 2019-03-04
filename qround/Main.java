@@ -62,7 +62,7 @@ public class Main {
 
         List<Slide> slideSolution = greedy(horizontal, vertical);
         stats += "Score before tweak: " + score(slideSolution) + "\n";
-        tweakSolution(slideSolution)
+        //tweakSolution(slideSolution);
         stats += "Score after tweak: " + score(slideSolution) + "\n";
 
         if(s)
@@ -76,9 +76,8 @@ public class Main {
 
       while (true) {
         int start;
-        for (int start = 0; start < solution.size() - 1; start++) {
+        for (start = 0; start < solution.size() - 1; start++) {
           if (solution.get(start).scoreTransition(solution.get(start + 1)) == 0) {
-            gStart = start;
             break;
           }
         }
@@ -94,7 +93,7 @@ public class Main {
 
         List<Slide> sublist = new ArrayList<>(solution.subList(start + 1, end));
         for (int i = end - 1; i > start; i--) {
-          solution.remove(i)
+          solution.remove(i);
         }
         solution.addAll(0, sublist);
       }
@@ -308,7 +307,7 @@ public class Main {
         if (tempScore > maxScore) {
           maxScoreIndex = i;
           maxScore = tempScore;
-          ver = next;
+          hor = next;
         }
       }
 

@@ -1,10 +1,3 @@
-Horizontal gran: 1
-Vertical 1st level gran: 100
-Vertical 2nd level gran: 100
-Concurrency on 64 threads.
-The algorithm took: 4045915 millis.
-Score: 428981
-
 60000
 88827
 41017 12458
