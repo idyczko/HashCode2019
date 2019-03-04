@@ -31,13 +31,16 @@ public class Main {
     private static String stats = "";
     private static boolean s = false;
     private static boolean r = false;
+    private static boolean p = false;
     private static int size;
+    private static int SIZE;
 
     public static void main(String[] args) {
         log |= option(args, "-l");
         concurrent |= option(args, "-c");
         s |= option(args, "-s");
         r |= option(args, "-r");
+        p |= option(args, "-p");
         GRAN_H = checkValue(args, "-gran_h", 1);
         GRAN_V1 = checkValue(args, "-gran_v1", 1);
         GRAN_V2 = checkValue(args, "-gran_v2", 1);
@@ -58,8 +61,9 @@ public class Main {
         }
 
         List<Slide> slideSolution = greedy(horizontal, vertical);
-
-        stats += "Score: " + score(slideSolution) + "\n";
+        stats += "Score before tweak: " + score(slideSolution) + "\n";
+        tweakSolution(slideSolution)
+        stats += "Score after tweak: " + score(slideSolution) + "\n";
 
         if(s)
           System.out.println(stats);
@@ -68,9 +72,38 @@ public class Main {
           printResult(prepareResultToPrint(slideSolution));
     }
 
+    private static void tweakSolution(List<Slide> solution) {
+
+      while (true) {
+        int start;
+        for (int start = 0; start < solution.size() - 1; start++) {
+          if (solution.get(start).scoreTransition(solution.get(start + 1)) == 0) {
+            gStart = start;
+            break;
+          }
+        }
+
+        int end;
+        for (end = start + 1; end < solution.size() - 1; end++) {
+          if (solution.get(end).scoreTransition(solution.get(end + 1)) == 0)
+          break;
+        }
+
+        if (solution.get(solution.size() - 1).scoreTransition(solution.get(0)) == 0)
+          break;
+
+        List<Slide> sublist = new ArrayList<>(solution.subList(start + 1, end));
+        for (int i = end - 1; i > start; i--) {
+          solution.remove(i)
+        }
+        solution.addAll(0, sublist);
+      }
+
+    }
+
     private static void read(Map<Set<String>, List<Integer>> horizontal, Map<Set<String>, List<Integer>> vertical) {
       Scanner in = new Scanner(System.in);
-      size = in.nextInt();
+      SIZE = size = in.nextInt();
       for (int i = 0; i < size; i++) {
           String orientation = in.next();
           int sizeOfSlide = in.nextInt();
@@ -133,10 +166,12 @@ public class Main {
         List<Slide> solution = new ArrayList<>(horizontal.size() + vertical.size());
         Slide firstSlide = getFirstSlide(horizontal, vertical);
         solution.add(firstSlide);
-
+        size--;
         List<Map.Entry<Set<String>, List<Integer>>> horList = new ArrayList<>(horizontal.entrySet());
         List<Map.Entry<Set<String>, List<Integer>>> verList = new ArrayList<>(vertical.entrySet());
         while (!horList.isEmpty() || verList.size() >= 2){
+            if (p)
+              System.out.println(size + "/" + SIZE);
             /*System.out.println("Horizontals: ");
             horizontal.entrySet().stream().forEach(e -> System.out.println("Key: " + e.getKey() + " value: " + Arrays.toString(e.getValue().toArray())));
             System.out.println("Verticals: ");
@@ -153,32 +188,33 @@ public class Main {
             AtomicInteger verIndex1 = new AtomicInteger(-1);
             AtomicInteger verIndex2 = new AtomicInteger(-1);
 
-            ExecutorService hPool = Executors.newFixedThreadPool(THREADS);
-            final int hChunkSize = horList.size()/THREADS + 1;
+            int hThreads = Math.max(1, (int) (THREADS * (((float) horList.size())/(horList.size() + 2*verList.size()))));
+            int vThreads = Math.max(1, THREADS - hThreads);
+            log("Horizontal threads: " + hThreads + " vertical threads: " + vThreads);
+            ExecutorService hPool = Executors.newFixedThreadPool(hThreads);
+            final int hChunkSize = horList.size()/hThreads + 1;
             log("Horizontal Chunk size: " + hChunkSize);
-            for (int i = 0; i < THREADS; i++) {
+            for (int i = 0; i < hThreads; i++) {
               final int I = i;
               hPool.execute(() -> horizontalUnitOfWork(horList, horMaxScore, horMaxScoreIndex, hor, last, I*hChunkSize, (I + 1)*hChunkSize));
             }
-            hPool.shutdown();
-            try {
-              hPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-            } catch (InterruptedException e) {
-            }
 
+            ExecutorService vPool = Executors.newFixedThreadPool(vThreads);
+            final int vChunkSize = verList.size()/vThreads + 1;
             if (verList.size() >= 2) {
-              ExecutorService vPool = Executors.newFixedThreadPool(THREADS);
-              final int vChunkSize = verList.size()/THREADS + 1;
               log("Vertical Chunk size: " + vChunkSize);
-              for (int i = 0; i < THREADS; i++) {
+              for (int i = 0; i < vThreads; i++) {
                 final int I = i;
                 vPool.execute(() -> verticalUnitOfWork(verList, verMaxScore, verIndex1, verIndex2, ver, last, I*vChunkSize, (I + 1)*vChunkSize));
               }
-              vPool.shutdown();
-              try {
-                vPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-              } catch (InterruptedException e) {
-              }
+            }
+
+            hPool.shutdown();
+            vPool.shutdown();
+            try {
+              hPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+              vPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+            } catch (InterruptedException e) {
             }
 
             log("Hor score: " + horMaxScore.get() + " ver score: " + verMaxScore.get());
@@ -190,7 +226,7 @@ public class Main {
                 } else {
                     photos.remove(0);
                 }
-
+                size--;
                 solution.add(hor.slide);
             } else {
                 int biggerIndex = verIndex1.get() > verIndex2.get() ? verIndex1.get() : verIndex2.get();
@@ -210,7 +246,7 @@ public class Main {
                 } else {
                     smallerPhotos.remove(0);
                 }
-
+                size -= 2;
                 solution.add(ver.slide);
             }
         }
@@ -221,6 +257,10 @@ public class Main {
 
     private static void verticalUnitOfWork(List<Map.Entry<Set<String>, List<Integer>>> verList,
       AtomicInteger score, AtomicInteger index1, AtomicInteger index2, SlideHolder slideHolder, Slide last, int start, int end) {
+        Slide ver = null;
+        int maxScore = -1;
+        int maxScoreIndex1 = -1;
+        int maxScoreIndex2 = -1;
         for (int i = start; i < end && i < verList.size(); i += GRAN_V1) {
           int id1 = verList.get(i).getValue().get(0);
           Set<String> verTags1 = verList.get(i).getKey();
@@ -236,32 +276,48 @@ public class Main {
             Slide next = new Slide(id1, id2, verTags1, verTags2);
             int tempScore = last.scoreTransition(next);
 
-            if(tempScore > score.get()) {
-              synchronized(score) {
-                if (tempScore > score.get()) {
-                  index1.set(i);
-                  index2.set(j);
-                  score.set(tempScore);
-                  slideHolder.slide = next;
-                }
-              }
+            if(tempScore > maxScore) {
+              maxScoreIndex1 = i;
+              maxScoreIndex2 = j;
+              maxScore = tempScore;
+              ver = next;
+            }
+          }
+        }
+
+        if (maxScore > score.get()) {
+          synchronized(score) {
+            if (maxScore > score.get()) {
+              index1.set(maxScoreIndex1);
+              index2.set(maxScoreIndex2);
+              score.set(maxScore);
+              slideHolder.slide = ver;
             }
           }
         }
       }
 
     private static void horizontalUnitOfWork(List<Map.Entry<Set<String>, List<Integer>>> horList, AtomicInteger score, AtomicInteger index, SlideHolder slideHolder, Slide last, int start, int end) {
+      Slide hor = null;
+      int maxScore = -1;
+      int maxScoreIndex = -1;
       for (int i = start; (i < end) && (i < horList.size()); i += GRAN_H) {
         Integer photoId = horList.get(i).getValue().get(0);
         Slide next = new Slide(photoId, horList.get(i).getKey());
         int tempScore = last.scoreTransition(next);
-        if (tempScore > score.get()) {
-          synchronized (score) {
-            if (tempScore > score.get()) {
-              index.set(i);
-              score.set(tempScore);
-              slideHolder.slide = next;
-            }
+        if (tempScore > maxScore) {
+          maxScoreIndex = i;
+          maxScore = tempScore;
+          ver = next;
+        }
+      }
+
+      if (maxScore > score.get()) {
+        synchronized (score) {
+          if (maxScore > score.get()) {
+            index.set(maxScoreIndex);
+            score.set(maxScore);
+            slideHolder.slide = hor;
           }
         }
       }
