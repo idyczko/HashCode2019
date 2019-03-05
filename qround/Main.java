@@ -63,7 +63,7 @@ public class Main {
         List<Slide> slideSolution = greedy(horizontal, vertical);
         stats += "Score before tweak: " + score(slideSolution) + "\n";
         //tweakSolution(slideSolution);
-        stats += "Score after tweak: " + score(slideSolution) + "\n";
+        //stats += "Score after tweak: " + score(slideSolution) + "\n";
 
         if(s)
           System.out.println(stats);
@@ -88,7 +88,7 @@ public class Main {
           break;
         }
 
-        if (solution.get(solution.size() - 1).scoreTransition(solution.get(0)) == 0)
+        if (solution.get(end).scoreTransition(solution.get(0)) == 0)
           break;
 
         List<Slide> sublist = new ArrayList<>(solution.subList(start + 1, end));
