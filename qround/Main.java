@@ -323,7 +323,7 @@ public class Main {
     }
 
     private static Slide getFirstSlide(Map<Set<String>, List<Integer>> horizontal, Map<Set<String>, List<Integer>> vertical) {
-      Optional<Map.Entry<Set<String>, List<Integer>>> first = horizontal.entrySet().stream().min((e1, e2) -> e1.getKey().size() - e2.getKey().size());
+      Optional<Map.Entry<Set<String>, List<Integer>>> first = horizontal.entrySet().stream().max((e1, e2) -> e1.getKey().size() - e2.getKey().size());
       if (first.isPresent()) {
           Integer id = first.get().getValue().remove(0);
           if (first.get().getValue().isEmpty()) {
